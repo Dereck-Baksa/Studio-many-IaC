@@ -8,12 +8,21 @@
       "Properties": {
         "CidrBlock": "10.0.0.0/26",
         "EnableDnsSupport": true,
-        "EnableDnsHostnames": true
+        "EnableDnsHostnames": true, 
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-VPC" }
+        ]
+        
       }
     },
 
     "StudioManyInternetGateway": {
       "Type": "AWS::EC2::InternetGateway"
+      , "Properties": {
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-InternetGateway" }
+        ]
+    }
     },
 
     "AttachGateway": {
@@ -30,7 +39,10 @@
         "VpcId": { "Ref": "StudioManyVpc" },
         "CidrBlock": "10.0.0.0/27",
         "AvailabilityZone": "us-east-1a",
-        "MapPublicIpOnLaunch": true
+        "MapPublicIpOnLaunch": true, 
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-subnet-publica" }
+        ]
       }
     },
 
@@ -39,7 +51,10 @@
       "Properties": {
         "VpcId": { "Ref": "StudioManyVpc" },
         "CidrBlock": "10.0.0.32/27",
-        "AvailabilityZone": "us-east-1a"
+        "AvailabilityZone": "us-east-1a", 
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-subnet-privada" }
+        ]
       }
     },
 
@@ -47,7 +62,10 @@
       "Type": "AWS::EC2::EIP",
       "DependsOn": "AttachGateway",
       "Properties": {
-        "Domain": "vpc"
+        "Domain": "vpc", 
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-ip-elastico" }
+        ]
       }
     },
 
@@ -55,15 +73,22 @@
       "Type": "AWS::EC2::NatGateway",
       "Properties": {
         "SubnetId": { "Ref": "StudioManySubnetPublica" },
-        "AllocationId": { "Fn::GetAtt": ["StudioManyElasticIP", "AllocationId"] }
+        "AllocationId": { "Fn::GetAtt": ["StudioManyElasticIP", "AllocationId"] }, 
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-nat-gateway" }
+        ]
       }
     },
 
     "StudioManyRouteTablePublica": {
       "Type": "AWS::EC2::RouteTable",
       "Properties": {
-        "VpcId": { "Ref": "StudioManyVpc" }
+        "VpcId": { "Ref": "StudioManyVpc" }, 
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-route-table-publica" }
+        ]
       }
+      
     },
 
     "StudioManyRotaPublica": {
@@ -73,7 +98,7 @@
         "RouteTableId": { "Ref": "StudioManyRouteTablePublica" },
         "DestinationCidrBlock": "0.0.0.0/0",
         "GatewayId": { "Ref": "StudioManyInternetGateway" }
-      }
+      } 
     },
 
     "AssociacaoPublica": {
@@ -87,7 +112,10 @@
     "StudioManyRouteTablePrivada": {
       "Type": "AWS::EC2::RouteTable",
       "Properties": {
-        "VpcId": { "Ref": "StudioManyVpc" }
+        "VpcId": { "Ref": "StudioManyVpc" }, 
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-route-table-privada" }
+        ]
       }
     },
 
@@ -132,6 +160,9 @@
             "ToPort": 8080,
             "CidrIp": "0.0.0.0/0"
           }
+        ], 
+       "Tags": [
+          { "Key": "Name", "Value": "Studio-many-scurity-groupHTTP" }
         ]
       }
     },
@@ -144,7 +175,7 @@
         "SubnetId": { "Ref": "StudioManySubnetPublica" },
         "SecurityGroupIds": [{ "Ref": "StudioManySecurityGroupHTTP" }],
         "Tags": [
-          { "Key": "Name", "Value": "Studio-many-front" }
+          { "Key": "Name", "Value": "Studio-many-ec2-front" }
         ]
       }
     },
@@ -157,7 +188,7 @@
         "SubnetId": { "Ref": "StudioManySubnetPrivada" },
         "SecurityGroupIds": [{ "Ref": "StudioManySecurityGroupHTTP" }],
         "Tags": [
-          { "Key": "Name", "Value": "Studio-many-back" }
+          { "Key": "Name", "Value": "Studio-many-ec2-back" }
         ]
       }
     },
@@ -170,20 +201,8 @@
         "SubnetId": { "Ref": "StudioManySubnetPrivada" },
         "SecurityGroupIds": [{ "Ref": "StudioManySecurityGroupHTTP" }],
         "Tags": [
-          { "Key": "Name", "Value": "Studio-many-banco" }
+          { "Key": "Name", "Value": "Studio-many-ec2-banco" }
         ]
-      }
-    },
-
-    "StudioManyBucketImagens": {
-      "Type": "AWS::S3::Bucket",
-      "Properties":{
-        "BucketName": "studio-many-bucket-imagens",
-        "AccessControl": "Private",
-        "VersioningConfiguration": {
-          "Status": "Enabled"
-        },
-        "Tags":[ { "Key": "Name", "Value": "Studio-many-back" }]
       }
     }
   }
