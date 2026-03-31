@@ -173,6 +173,18 @@
           { "Key": "Name", "Value": "Studio-many-banco" }
         ]
       }
+    },
+
+    "StudioManyBucketImagens": {
+      "Type": "AWS::S3::Bucket",
+      "Properties":{
+        "BucketName": "studio-many-bucket-imagens",
+        "AccessControl": "Private",
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "Tags":[ { "Key": "Name", "Value": "Studio-many-back" }]
+      }
     }
   }
 }
