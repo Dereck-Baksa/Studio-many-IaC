@@ -38,7 +38,8 @@
         }
       }
     },
-    "StudioManySubnetPublica": {
+
+    "StudioManySubnetPublicaLB": {
       "Type": "AWS::EC2::Subnet",
       "Properties": {
         "VpcId": {
@@ -50,12 +51,30 @@
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Studio-many-subnet-publica"
+            "Value": "Studio-many-subnet-publica-LB"
           }
         ]
       }
     },
-    "StudioManySubnetPrivada": {
+
+    "StudioManySubnetPrivadaFront": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "StudioManyVpc"
+        },
+        "CidrBlock": "10.0.0.0/27",
+        "AvailabilityZone": "us-east-1a",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-subnet-publica-Front"
+          }
+        ]
+      }
+    },
+
+    "StudioManySubnetPrivadaBackEnd": {
       "Type": "AWS::EC2::Subnet",
       "Properties": {
         "VpcId": {
@@ -66,11 +85,29 @@
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Studio-many-subnet-privada"
+            "Value": "Studio-many-subnet-privada-BackEnd"
           }
         ]
       }
     },
+
+    "StudioManySubnetPrivadaDB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "StudioManyVpc"
+        },
+        "CidrBlock": "10.0.0.32/27",
+        "AvailabilityZone": "us-east-1a",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-subnet-privada-DB"
+          }
+        ]
+      }
+    },
+
     "StudioManyElasticIP": {
       "Type": "AWS::EC2::EIP",
       "DependsOn": "AttachGateway",
@@ -84,11 +121,12 @@
         ]
       }
     },
+    
     "StudioManyNatGateway": {
       "Type": "AWS::EC2::NatGateway",
       "Properties": {
         "SubnetId": {
-          "Ref": "StudioManySubnetPublica"
+          "Ref": "StudioManySubnetPublicaLB"
         },
         "AllocationId": {
           "Fn::GetAtt": [
@@ -104,7 +142,8 @@
         ]
       }
     },
-    "StudioManyRouteTablePublica": {
+
+    "StudioManyRouteTablePublicaLB": {
       "Type": "AWS::EC2::RouteTable",
       "Properties": {
         "VpcId": {
@@ -113,17 +152,18 @@
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Studio-many-route-table-publica"
+            "Value": "Studio-many-route-table-publica-LB"
           }
         ]
       }
     },
-    "StudioManyRotaPublica": {
+
+    "StudioManyRotaPublicaLB": {
       "Type": "AWS::EC2::Route",
       "DependsOn": "AttachGateway",
       "Properties": {
         "RouteTableId": {
-          "Ref": "StudioManyRouteTablePublica"
+          "Ref": "StudioManyRouteTablePublicaLB"
         },
         "DestinationCidrBlock": "0.0.0.0/0",
         "GatewayId": {
@@ -131,18 +171,20 @@
         }
       }
     },
+
     "AssociacaoPublica": {
       "Type": "AWS::EC2::SubnetRouteTableAssociation",
       "Properties": {
         "SubnetId": {
-          "Ref": "StudioManySubnetPublica"
+          "Ref": "StudioManySubnetPublicaLB"
         },
         "RouteTableId": {
-          "Ref": "StudioManyRouteTablePublica"
+          "Ref": "StudioManyRouteTablePublicaLB"
         }
       }
     },
-    "StudioManyRouteTablePrivada": {
+
+    "StudioManyRouteTablePrivadaFront": {
       "Type": "AWS::EC2::RouteTable",
       "Properties": {
         "VpcId": {
@@ -151,11 +193,42 @@
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Studio-many-route-table-privada"
+            "Value": "Studio-many-route-table-privada-Front"
           }
         ]
       }
     },
+
+    "StudioManyRouteTablePrivadaBackEnd": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "StudioManyVpc"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-route-table-privada-BackEnd"
+          }
+        ]
+      }
+    },
+
+    "StudioManyRouteTablePrivadaDB": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "StudioManyVpc"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-route-table-privada-DB"
+          }
+        ]
+      }
+    },
+
     "StudioManyRotaPrivada": {
       "Type": "AWS::EC2::Route",
       "Properties": {
@@ -168,6 +241,46 @@
         }
       }
     },
+
+    "StudioManyRotaPrivadaFront": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "StudioManyRouteTablePrivadaFront"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "StudioManyNatGateway"
+        }
+      }
+    },
+
+    "StudioManyRotaPrivadaBackEnd": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "StudioManyRouteTablePrivadaBackEnd"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "StudioManyNatGateway"
+        }
+      }
+    },
+
+    "StudioManyRotaPrivadaBD": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "StudioManyRouteTablePrivadaBD"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "StudioManyNatGateway"
+        }
+      }
+    },
+
     "AssociacaoPrivada": {
       "Type": "AWS::EC2::SubnetRouteTableAssociation",
       "Properties": {
@@ -179,6 +292,43 @@
         }
       }
     },
+
+    "AssociacaoPrivadaFront": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "StudioManySubnetPrivadaFront"
+        },
+        "RouteTableId": {
+          "Ref": "StudioManyRouteTablePrivadaFront"
+        }
+      }
+    },
+
+    "AssociacaoPrivadaBackEnd": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "StudioManySubnetPrivadaBackEnd"
+        },
+        "RouteTableId": {
+          "Ref": "StudioManyRouteTablePrivadaBackEnd"
+        }
+      }
+    },
+
+    "AssociacaoPrivadaDB": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "StudioManySubnetPrivadaDB"
+        },
+        "RouteTableId": {
+          "Ref": "StudioManyRouteTablePrivadaDB"
+        }
+      }
+    },
+
     "StudioManySecurityGroupHTTP": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
@@ -214,6 +364,7 @@
         ]
       }
     },
+
     "StudioManyElasticIPFront": {
       "Type": "AWS::EC2::EIP",
       "Properties": {
@@ -227,78 +378,175 @@
       }
     },
 
-    "StudioManyEC2PublicaFront": {
-      "Type": "AWS::EC2::Instance",
-      "Properties": {
-        "ImageId": "ami-0653637a415d27d06",
-        "InstanceType": "t3.micro",
-        "SubnetId": {
-          "Ref": "StudioManySubnetPublica"
-        },
-        "SecurityGroupIds": [
-          {
-            "Ref": "StudioManySecurityGroupHTTP"
-          }
-        ],
-        "KeyName": "studio-many-chave",
-        "Tags": [
-          {
-            "Key": "Name",
-            "Value": "Studio-many-ec2-front"
-          }
-        ]
-      }
-    },
-    "StudioManyEC2PrivadaBack": {
+    "StudioManyEC2PublicaFrontA": {
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "ImageId": "ami-0c02fb55956c7d316",
         "InstanceType": "t3.micro",
         "SubnetId": {
-          "Ref": "StudioManySubnetPrivada"
+          "Ref": "StudioManySubnetPrivadaFront"
         },
         "SecurityGroupIds": [
           {
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave",
+        "KeyName": "studio-many-chave.pem",
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Studio-many-ec2-back"
+            "Value": "Studio-many-ec2-front-A"
           }
         ]
       }
     },
-    "StudioManyEC2PrivadaBanco": {
+
+    "StudioManyEC2PublicaFrontB": {
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "ImageId": "ami-0c02fb55956c7d316",
         "InstanceType": "t3.micro",
         "SubnetId": {
-          "Ref": "StudioManySubnetPrivada"
+          "Ref": "StudioManySubnetPrivadaFront"
         },
         "SecurityGroupIds": [
           {
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave",
+        "KeyName": "studio-many-chave.pem",
         "Tags": [
           {
             "Key": "Name",
-            "Value": "Studio-many-ec2-banco"
+            "Value": "Studio-many-ec2-front-B"
           }
         ]
       }
     },
-    "StudioManyEipAssociationFront":{
-        "Type": "AWS::EC2::EIPAssociation",
-        "Properties":{
-            "InstanceId": { "Ref": "StudioManyEC2PublicaFront" },
-            "AllocationId": { "Fn::GetAtt": ["StudioManyElasticIPFront", "AllocationId"] } 
+    "StudioManyEC2PrivadaBackA": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": "ami-0c02fb55956c7d316",
+        "InstanceType": "t3.micro",
+        "SubnetId": {
+          "Ref": "StudioManySubnetPrivadaBackEnd"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "StudioManySecurityGroupHTTP"
+          }
+        ],
+        "KeyName": "studio-many-chave.pem",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-ec2-back-A"
+          }
+        ]
+      }
+    },
+    "StudioManyEC2PrivadaBackB": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": "ami-0c02fb55956c7d316",
+        "InstanceType": "t3.micro",
+        "SubnetId": {
+          "Ref": "StudioManySubnetPrivadaBackEnd"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "StudioManySecurityGroupHTTP"
+          }
+        ],
+        "KeyName": "studio-many-chave.pem",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-ec2-back-B"
+          }
+        ]
+      }
+    },
+    "StudioManyEC2PrivadaBancoA": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": "ami-0c02fb55956c7d316",
+        "InstanceType": "t3.micro",
+        "SubnetId": {
+          "Ref": "StudioManySubnetPrivadaDB"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "StudioManySecurityGroupHTTP"
+          }
+        ],
+        "KeyName": "studio-many-chave.pem",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-ec2-banco-A"
+          }
+        ]
+      }
+    },
+
+    "StudioManyEC2LoadBalanceFirst": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": "ami-0c02fb55956c7d316",
+        "InstanceType": "t3.micro",
+        "SubnetId": {
+          "Ref": "StudioManySubnetPublicaLB"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "StudioManySecurityGroupHTTP"
+          }
+        ],
+        "KeyName": "studio-many-chave.pem",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-ec2-LoadBalance-first"
+          }
+        ]
+      }
+    },
+    "StudioManyEC2LoadBalanceSecond": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": "ami-0c02fb55956c7d316",
+        "InstanceType": "t3.micro",
+        "SubnetId": {
+          "Ref": "StudioManySubnetPrivadaFront"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "StudioManySecurityGroupHTTP"
+          }
+        ],
+        "KeyName": "studio-many-chave.pem",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Studio-many-ec2-LoadBalance-second"
+          }
+        ]
+      }
+    },
+    "StudioManyEipAssociation": {
+      "Type": "AWS::EC2::EIPAssociation",
+      "Properties": {
+        "InstanceId": {
+          "Ref": "StudioManyEC2LoadBalanceSecond"
+        },
+        "AllocationId": {
+          "Fn::GetAtt": [
+            "StudioManyElasticIPFront",
+            "AllocationId"
+          ]
         }
+      }
     }
   }
 }
