@@ -268,11 +268,11 @@
       }
     },
 
-    "StudioManyRotaPrivadaBD": {
+    "StudioManyRotaPrivadaDB": {
       "Type": "AWS::EC2::Route",
       "Properties": {
         "RouteTableId": {
-          "Ref": "StudioManyRouteTablePrivadaBD"
+          "Ref": "StudioManyRouteTablePrivadaDB"
         },
         "DestinationCidrBlock": "0.0.0.0/0",
         "NatGatewayId": {
