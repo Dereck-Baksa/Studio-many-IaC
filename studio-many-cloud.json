@@ -229,19 +229,6 @@
       }
     },
 
-    "StudioManyRotaPrivada": {
-      "Type": "AWS::EC2::Route",
-      "Properties": {
-        "RouteTableId": {
-          "Ref": "StudioManyRouteTablePrivada"
-        },
-        "DestinationCidrBlock": "0.0.0.0/0",
-        "NatGatewayId": {
-          "Ref": "StudioManyNatGateway"
-        }
-      }
-    },
-
     "StudioManyRotaPrivadaFront": {
       "Type": "AWS::EC2::Route",
       "Properties": {
@@ -277,18 +264,6 @@
         "DestinationCidrBlock": "0.0.0.0/0",
         "NatGatewayId": {
           "Ref": "StudioManyNatGateway"
-        }
-      }
-    },
-
-    "AssociacaoPrivada": {
-      "Type": "AWS::EC2::SubnetRouteTableAssociation",
-      "Properties": {
-        "SubnetId": {
-          "Ref": "StudioManySubnetPrivada"
-        },
-        "RouteTableId": {
-          "Ref": "StudioManyRouteTablePrivada"
         }
       }
     },
