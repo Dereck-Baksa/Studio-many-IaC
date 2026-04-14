@@ -5,7 +5,7 @@
     "StudioManyVpc": {
       "Type": "AWS::EC2::VPC",
       "Properties": {
-        "CidrBlock": "10.0.0.0/26",
+        "CidrBlock": "10.0.0.0/22",
         "EnableDnsSupport": true,
         "EnableDnsHostnames": true,
         "Tags": [
@@ -45,7 +45,7 @@
         "VpcId": {
           "Ref": "StudioManyVpc"
         },
-        "CidrBlock": "10.0.0.0/27",
+        "CidrBlock": "10.0.0.32/27",
         "AvailabilityZone": "us-east-1a",
         "MapPublicIpOnLaunch": true,
         "Tags": [
@@ -63,7 +63,7 @@
         "VpcId": {
           "Ref": "StudioManyVpc"
         },
-        "CidrBlock": "10.0.0.0/27",
+        "CidrBlock": "10.0.1.32/27",
         "AvailabilityZone": "us-east-1a",
         "Tags": [
           {
@@ -80,7 +80,7 @@
         "VpcId": {
           "Ref": "StudioManyVpc"
         },
-        "CidrBlock": "10.0.0.32/27",
+        "CidrBlock": "10.0.2.32/27",
         "AvailabilityZone": "us-east-1a",
         "Tags": [
           {
@@ -97,7 +97,7 @@
         "VpcId": {
           "Ref": "StudioManyVpc"
         },
-        "CidrBlock": "10.0.0.32/27",
+        "CidrBlock": "10.0.3.32/27",
         "AvailabilityZone": "us-east-1a",
         "Tags": [
           {
@@ -158,7 +158,7 @@
       }
     },
 
-    "StudioManyRotaPublicaLB": {
+    "StudioManyRoutePublicaLB": {
       "Type": "AWS::EC2::Route",
       "DependsOn": "AttachGateway",
       "Properties": {
@@ -229,7 +229,7 @@
       }
     },
 
-    "StudioManyRotaPrivadaFront": {
+    "StudioManyRoutePrivadaFront": {
       "Type": "AWS::EC2::Route",
       "Properties": {
         "RouteTableId": {
@@ -242,7 +242,7 @@
       }
     },
 
-    "StudioManyRotaPrivadaBackEnd": {
+    "StudioManyRoutePrivadaBackEnd": {
       "Type": "AWS::EC2::Route",
       "Properties": {
         "RouteTableId": {
@@ -255,7 +255,7 @@
       }
     },
 
-    "StudioManyRotaPrivadaDB": {
+    "StudioManyRoutePrivadaDB": {
       "Type": "AWS::EC2::Route",
       "Properties": {
         "RouteTableId": {
@@ -366,7 +366,7 @@
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave.pem",
+        "KeyName": "studio-many-chave",
         "Tags": [
           {
             "Key": "Name",
@@ -389,7 +389,7 @@
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave.pem",
+        "KeyName": "studio-many-chave",
         "Tags": [
           {
             "Key": "Name",
@@ -411,7 +411,7 @@
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave.pem",
+        "KeyName": "studio-many-chave",
         "Tags": [
           {
             "Key": "Name",
@@ -433,7 +433,7 @@
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave.pem",
+        "KeyName": "studio-many-chave",
         "Tags": [
           {
             "Key": "Name",
@@ -455,7 +455,7 @@
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave.pem",
+        "KeyName": "studio-many-chave",
         "Tags": [
           {
             "Key": "Name",
@@ -478,7 +478,7 @@
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave.pem",
+        "KeyName": "studio-many-chave",
         "Tags": [
           {
             "Key": "Name",
@@ -500,7 +500,7 @@
             "Ref": "StudioManySecurityGroupHTTP"
           }
         ],
-        "KeyName": "studio-many-chave.pem",
+        "KeyName": "studio-many-chave",
         "Tags": [
           {
             "Key": "Name",
