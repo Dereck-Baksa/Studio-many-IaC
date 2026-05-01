@@ -205,7 +205,7 @@
               "Ref": "StudioManySecurityGroupHTTP"
             }
           ],
-          "KeyName": "studio-many-chave",              
+          "KeyName": "studio-many-chave",
           "PrivateIpAddress": "10.0.1.2"
         }
       },
@@ -222,7 +222,7 @@
               "Ref": "StudioManySecurityGroupHTTP"
             }
           ],
-          "KeyName": "studio-many-chave",   
+          "KeyName": "studio-many-chave",
           "PrivateIpAddress": "10.0.1.34"
         }
       },
@@ -335,69 +335,6 @@
               "Type": "forward",
               "TargetGroupArn": {
                 "Ref": "StudioManyTargetGroupFront"
-              }
-            }
-          ]
-        }
-      },
-      "StudioManyLoadbalancerPrivado": {
-        "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
-        "Properties": {
-          "Name": "StudioManyLBPrivado",
-          "Subnets": [
-            {
-              "Ref": "StudioManySubnetPrivadaBackA"
-            },
-            {
-              "Ref": "StudioManySubnetPrivadaBackB"
-            }
-          ],
-          "SecurityGroups": [
-            {
-              "Ref": "StudioManySecurityGroupHTTP"
-            }
-          ],
-          "Scheme": "internet-facing",
-          "Type": "application"
-        }
-      },
-      "StudioManyTargetGroupBack": {
-        "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
-        "Properties": {
-          "Name": "StudioManyTG",
-          "Port": 80,
-          "Protocol": "HTTP",
-          "VpcId": {
-            "Ref": "StudioManyVpc"
-          },
-          "TargetType": "instance",
-          "Targets": [
-            {
-              "Id": {
-                "Ref": "StudioManyEC2BackA"
-              }
-            },
-            {
-              "Id": {
-                "Ref": "StudioManyEC2BackB"
-              }
-            }
-          ]
-        }
-      },
-      "StudioManyListenerBack": {
-        "Type": "AWS::ElasticLoadBalancingV2::Listener",
-        "Properties": {
-          "LoadBalancerArn": {
-            "Ref": "StudioManyLoadbalancerPrivado"
-          },
-          "Port": 80,
-          "Protocol": "HTTP",
-          "DefaultActions": [
-            {
-              "Type": "forward",
-              "TargetGroupArn": {
-                "Ref": "StudioManyTargetGroupBack"
               }
             }
           ]
