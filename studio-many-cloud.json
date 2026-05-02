@@ -206,7 +206,7 @@
             }
           ],
           "KeyName": "studio-many-chave",
-          "PrivateIpAddress": "10.0.1.2"
+          "PrivateIpAddress": "10.0.1.11"
         }
       },
       "StudioManyEC2FrontB": {
@@ -223,7 +223,7 @@
             }
           ],
           "KeyName": "studio-many-chave",
-          "PrivateIpAddress": "10.0.1.34"
+          "PrivateIpAddress": "10.0.1.41"
         }
       },
       "StudioManyEC2BackA": {
@@ -240,7 +240,7 @@
             }
           ],
           "KeyName": "studio-many-chave",
-          "PrivateIpAddress": "10.0.2.2"
+          "PrivateIpAddress": "10.0.2.11"
         }
       },
       "StudioManyEC2BackB": {
@@ -257,13 +257,13 @@
             }
           ],
           "KeyName": "studio-many-chave",
-          "PrivateIpAddress": "10.0.2.34"
+          "PrivateIpAddress": "10.0.2.41"
         }
       },
       "StudioManyEC2DB": {
         "Type": "AWS::EC2::Instance",
         "Properties": {
-          "ImageId": "ami-0c02fb55956c7d316",
+          "ImageId": "ami-0badca68c2da1220f",
           "InstanceType": "t3.micro",
           "SubnetId": {
             "Ref": "StudioManySubnetPrivadaDB"
@@ -274,7 +274,7 @@
             }
           ],
           "KeyName": "studio-many-chave",
-          "PrivateIpAddress": "10.0.3.2"
+          "PrivateIpAddress": "10.0.3.11"
         }
       },
       "StudioManyLoadbalancerPublico": {
