@@ -50,7 +50,7 @@
           "Tags": [
             {
               "Key": "Name",
-              "Value": "Studio-many-subnet-publica-A"
+              "Value": "Studio-many-subnet-publica-Front-A"
             }
           ]
         }
@@ -67,7 +67,7 @@
           "Tags": [
             {
               "Key": "Name",
-              "Value": "Studio-many-subnet-publica-B"
+              "Value": "Studio-many-subnet-publica-Front-B"
             }
           ]
         }
@@ -116,6 +116,22 @@
             {
               "Key": "Name",
               "Value": "Studio-many-subnet-privada-DB"
+            }
+          ]
+        }
+      },
+      "StudioManySubnetPrivadaDBB": {
+        "Type": "AWS::EC2::Subnet",
+        "Properties": {
+          "VpcId": {
+            "Ref": "StudioManyVpc"
+          },
+          "CidrBlock": "10.0.3.32/27",
+          "AvailabilityZone": "us-east-1b",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "Studio-many-subnet-privada-DB-B"
             }
           ]
         }
@@ -175,7 +191,7 @@
               "IpProtocol": "tcp",
               "FromPort": 22,
               "ToPort": 22,
-              "CidrIp": "0.0.0.0/0"
+              "CidrIp": "10.0.0.0/22"
             },
             {
               "IpProtocol": "tcp",
@@ -223,7 +239,7 @@
             }
           ],
           "KeyName": "studio-many-chave",
-          "PrivateIpAddress": "10.0.1.41"
+          "PrivateIpAddress": "10.0.1.43"
         }
       },
       "StudioManyEC2BackA": {
@@ -257,26 +273,10 @@
             }
           ],
           "KeyName": "studio-many-chave",
-          "PrivateIpAddress": "10.0.2.41"
+          "PrivateIpAddress": "10.0.2.43"
         }
       },
-      "StudioManyEC2DB": {
-        "Type": "AWS::EC2::Instance",
-        "Properties": {
-          "ImageId": "ami-0badca68c2da1220f",
-          "InstanceType": "t3.micro",
-          "SubnetId": {
-            "Ref": "StudioManySubnetPrivadaDB"
-          },
-          "SecurityGroupIds": [
-            {
-              "Ref": "StudioManySecurityGroupHTTP"
-            }
-          ],
-          "KeyName": "studio-many-chave",
-          "PrivateIpAddress": "10.0.3.11"
-        }
-      },
+
       "StudioManyLoadbalancerPublico": {
         "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
         "Properties": {
@@ -335,6 +335,230 @@
               "Type": "forward",
               "TargetGroupArn": {
                 "Ref": "StudioManyTargetGroupFront"
+              }
+            }
+          ]
+        }
+      },
+      "StudioManySecurityGroupRDS": {
+        "Type": "AWS::EC2::SecurityGroup",
+        "Properties": {
+          "GroupDescription": "Security Group para RDS MySQL/PostgreSQL",
+          "VpcId": {
+            "Ref": "StudioManyVpc"
+          },
+          "SecurityGroupIngress": [
+            {
+              "IpProtocol": "tcp",
+              "FromPort": 3306,
+              "ToPort": 3306,
+              "SourceSecurityGroupId": {
+                "Ref": "StudioManySecurityGroupHTTP"
+              }
+            }
+          ],
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "Studio-many-SG-RDS"
+            }
+          ]
+        }
+      },
+      "StudioManySecurityGroupEFS": {
+        "Type": "AWS::EC2::SecurityGroup",
+        "Properties": {
+          "GroupDescription": "Security Group para EFS NFS",
+          "VpcId": {
+            "Ref": "StudioManyVpc"
+          },
+          "SecurityGroupIngress": [
+            {
+              "IpProtocol": "tcp",
+              "FromPort": 2049,
+              "ToPort": 2049,
+              "SourceSecurityGroupId": {
+                "Ref": "StudioManySecurityGroupHTTP"
+              }
+            }
+          ],
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "Studio-many-SG-EFS"
+            }
+          ]
+        }
+      },
+      "StudioManyDBSubnetGroup": {
+        "Type": "AWS::RDS::DBSubnetGroup",
+        "Properties": {
+          "DBSubnetGroupDescription": "Subnet Group para RDS Database",
+          "SubnetIds": [
+            {
+              "Ref": "StudioManySubnetPrivadaDB"
+            },
+            {
+              "Ref": "StudioManySubnetPrivadaDBB"
+            }
+          ],
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "Studio-many-DBSubnetGroup"
+            }
+          ]
+        }
+      },
+      "StudioManyRDSInstance": {
+        "Type": "AWS::RDS::DBInstance",
+        "Properties": {
+          "DBInstanceIdentifier": "studio-many-database",
+          "DBInstanceClass": "db.t3.micro",
+          "Engine": "mysql",
+          "EngineVersion": "8.4.8",
+          "MasterUsername": "admin",
+          "MasterUserPassword": "StudioMany123",
+          "AllocatedStorage": 20,
+          "StorageType": "gp2",
+          "VPCSecurityGroups": [
+            {
+              "Ref": "StudioManySecurityGroupRDS"
+            }
+          ],
+          "DBSubnetGroupName": {
+            "Ref": "StudioManyDBSubnetGroup"
+          },
+          "BackupRetentionPeriod": 7,
+          "MultiAZ": false,
+          "StorageEncrypted": false,
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "Studio-many-RDS"
+            }
+          ]
+        }
+      },
+      "StudioManyEFS": {
+        "Type": "AWS::EFS::FileSystem",
+        "Properties": {
+          "PerformanceMode": "generalPurpose",
+          "ThroughputMode": "bursting",
+          "Encrypted": true
+        }
+      },
+      "StudioManyEFSMountTargetFrontA": {
+        "Type": "AWS::EFS::MountTarget",
+        "Properties": {
+          "FileSystemId": {
+            "Ref": "StudioManyEFS"
+          },
+          "SubnetId": {
+            "Ref": "StudioManySubnetPublicaFrontA"
+          },
+          "SecurityGroups": [
+            {
+              "Ref": "StudioManySecurityGroupEFS"
+            }
+          ]
+        }
+      },
+      "StudioManyEFSMountTargetFrontB": {
+        "Type": "AWS::EFS::MountTarget",
+        "Properties": {
+          "FileSystemId": {
+            "Ref": "StudioManyEFS"
+          },
+          "SubnetId": {
+            "Ref": "StudioManySubnetPublicaFrontB"
+          },
+          "SecurityGroups": [
+            {
+              "Ref": "StudioManySecurityGroupEFS"
+            }
+          ]
+        }
+      },
+      "StudioManyCloudWatchAlarmCPUFrontA": {
+        "Type": "AWS::CloudWatch::Alarm",
+        "Properties": {
+          "AlarmDescription": "Alarme de CPU para EC2 Frontend A",
+          "MetricName": "CPUUtilization",
+          "Namespace": "AWS/EC2",
+          "Statistic": "Average",
+          "Period": 300,
+          "EvaluationPeriods": 2,
+          "Threshold": 80,
+          "ComparisonOperator": "GreaterThanThreshold",
+          "Dimensions": [
+            {
+              "Name": "InstanceId",
+              "Value": {
+                "Ref": "StudioManyEC2FrontA"
+              }
+            }
+          ]
+        }
+      },
+      "StudioManyCloudWatchAlarmCPUFrontB": {
+        "Type": "AWS::CloudWatch::Alarm",
+        "Properties": {
+          "AlarmDescription": "Alarme de CPU para EC2 Frontend B",
+          "MetricName": "CPUUtilization",
+          "Namespace": "AWS/EC2",
+          "Statistic": "Average",
+          "Period": 300,
+          "EvaluationPeriods": 2,
+          "Threshold": 80,
+          "ComparisonOperator": "GreaterThanThreshold",
+          "Dimensions": [
+            {
+              "Name": "InstanceId",
+              "Value": {
+                "Ref": "StudioManyEC2FrontB"
+              }
+            }
+          ]
+        }
+      },
+      "StudioManyCloudWatchAlarmCPUBackA": {
+        "Type": "AWS::CloudWatch::Alarm",
+        "Properties": {
+          "AlarmDescription": "Alarme de CPU para EC2 Backend A",
+          "MetricName": "CPUUtilization",
+          "Namespace": "AWS/EC2",
+          "Statistic": "Average",
+          "Period": 300,
+          "EvaluationPeriods": 2,
+          "Threshold": 80,
+          "ComparisonOperator": "GreaterThanThreshold",
+          "Dimensions": [
+            {
+              "Name": "InstanceId",
+              "Value": {
+                "Ref": "StudioManyEC2BackA"
+              }
+            }
+          ]
+        }
+      },
+      "StudioManyCloudWatchAlarmCPUBackB": {
+        "Type": "AWS::CloudWatch::Alarm",
+        "Properties": {
+          "AlarmDescription": "Alarme de CPU para EC2 Backend B",
+          "MetricName": "CPUUtilization",
+          "Namespace": "AWS/EC2",
+          "Statistic": "Average",
+          "Period": 300,
+          "EvaluationPeriods": 2,
+          "Threshold": 80,
+          "ComparisonOperator": "GreaterThanThreshold",
+          "Dimensions": [
+            {
+              "Name": "InstanceId",
+              "Value": {
+                "Ref": "StudioManyEC2BackB"
               }
             }
           ]
