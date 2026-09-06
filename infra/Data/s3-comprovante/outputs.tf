@@ -1,4 +1,4 @@
-output "website_url" {
-  description = "Website URL"
-  value       = "http://${aws_instance.webserver.public_dns}"
+output "bucket_url" {
+  description = "bucket_url"
+  value       = aws_s3_bucket.s3_comprovante.website_endpoint
 }
