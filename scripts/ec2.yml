@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EC2 desacoplada e generica - instancia unica com rede propria opcional. CreateNetwork=true cria VPC/subnet/IGW/rota/SG internos; false usa VpcId/SubnetId/SecurityGroupIds do ambiente.' 
+Parameters:
+  ProjectName: {Type: String, Default: StudioMany, Description: 'Prefixo dos nomes e tags.'}
+  Environment: {Type: String, Default: dev, AllowedValues: [dev, staging, prod], Description: 'Ambiente de implantacao.'}
+  InstanceName: {Type: String, Default: app, Description: 'Sufixo do nome da instancia (tag Name).'}
+  EnableInstance: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria a instancia (false = cria apenas a rede/SG p/ reuso).'}
+  CreateNetwork: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'true: cria VPC/subnet/IGW/rota/SG internos. false: usa VpcId/SubnetId/SecurityGroupIds.'}
+  ImageId: {Type: 'AWS::EC2::Image::Id', Default: ami-0c02fb55956c7d316, Description: 'AMI da instancia.'}
+  InstanceType: {Type: String, Default: t3.micro, Description: 'Tipo da instancia.'}
+  KeyName: {Type: String, Default: '', Description: '(Opcional) Key pair p/ SSH.'}
+  PrivateIpAddress: {Type: String, Default: '', AllowedPattern: '^$|^((\d{1,3}\.){3}\d{1,3})$', ConstraintDescription: 'IP privado valido ou vazio.', Description: '(Opcional) IP privado estatico.'}
+  Monitoring: {Type: String, Default: "false", AllowedValues: ["true", "false"], Description: 'Monitoring detalhado (1 minuto).'}
+  IamInstanceProfile: {Type: String, Default: '', Description: '(Opcional) Nome/ARN do Instance Profile IAM.'}
+  UserData: {Type: String, Default: '', Description: '(Opcional) Script de inicializacao da instancia.'}
+  UserDataEncoding: {Type: String, Default: base64, AllowedValues: [base64, plain], Description: 'base64 = codifica o UserData; plain = usa como esta.'}
+  RootVolumeSize: {Type: Number, Default: 20, MinValue: 8, MaxValue: 16384, Description: 'Tamanho do volume raiz (GiB).'}
+  RootVolumeType: {Type: String, Default: gp3, AllowedValues: [gp2, gp3, io1, io2, st1, sc1, standard], Description: 'Tipo do volume raiz.'}
+  RootVolumeIops: {Type: Number, Default: 3000, MinValue: 100, MaxValue: 64000, Description: 'IOPS (gp3/io1/io2).'}
+  RootVolumeEncrypted: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Criptografa o volume raiz.'}
+  RootVolumeDeleteOnTermination: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Apaga o volume ao terminar a instancia.'}
+  VpcCidr: {Type: String, Default: 10.0.0.0/22, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da VPC (quando CreateNetwork=true).'}
+  SubnetCidr: {Type: String, Default: 10.0.1.0/27, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da subnet (quando CreateNetwork=true).'}
+  AvailabilityZone: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1a, Description: 'AZ da subnet (quando CreateNetwork=true).'}
+  MyIP: {Type: String, Default: 0.0.0.0/0, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR liberado p/ SSH no SG da instancia.'}
+  VpcId: {Type: String, Default: '', Description: '(Obrigatorio se CreateNetwork=false) VPC existente.'}
+  SubnetId: {Type: String, Default: '', Description: '(Obrigatorio se CreateNetwork=false) Subnet existente.'}
+  SecurityGroupIds: {Type: CommaDelimitedList, Default: '', Description: '(Obrigatorio se CreateNetwork=false) SGs da instancia.'}
+Conditions:
+  ShouldCreateNetwork: !Equals [!Ref CreateNetwork, "true"]
+  ShouldCreateInstance: !Equals [!Ref EnableInstance, "true"]
+  HasKeyName: !Not [!Equals [!Ref KeyName, '']]
+  HasPrivateIp: !Not [!Equals [!Ref PrivateIpAddress, '']]
+  HasIamProfile: !Not [!Equals [!Ref IamInstanceProfile, '']]
+  HasUserData: !Not [!Equals [!Ref UserData, '']]
+  IsBase64Encoded: !Equals [!Ref UserDataEncoding, base64]
+  HasIops: !Or [!Equals [!Ref RootVolumeType, gp3], !Equals [!Ref RootVolumeType, io1], !Equals [!Ref RootVolumeType, io2]]
+  MonitoringEnabled: !Equals [!Ref Monitoring, "true"]
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Condition: ShouldCreateNetwork
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${InstanceName}-vpc'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Condition: ShouldCreateNetwork
+    Properties:
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${InstanceName}-igw'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  AttachGateway: {Type: 'AWS::EC2::VPCGatewayAttachment', Condition: ShouldCreateNetwork, Properties: {VpcId: !Ref VPC, InternetGatewayId: !Ref InternetGateway}}
+  Subnet:
+    Type: 'AWS::EC2::Subnet'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr
+      AvailabilityZone: !Ref AvailabilityZone
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${InstanceName}-subnet'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${InstanceName}-rt'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PublicRoute: {Type: 'AWS::EC2::Route', Condition: ShouldCreateNetwork, DependsOn: AttachGateway, Properties: {RouteTableId: !Ref RouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway}}
+  SubnetAssociation: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: ShouldCreateNetwork, Properties: {SubnetId: !Ref Subnet, RouteTableId: !Ref RouteTable}}
+  InstanceSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: ShouldCreateNetwork
+    Properties:
+      GroupDescription: 'Security group da instancia'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref MyIP}
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+      SecurityGroupEgress:
+        - {IpProtocol: '-1', CidrIp: 0.0.0.0/0}
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${InstanceName}-sg'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  EC2Instance:
+    Type: 'AWS::EC2::Instance'
+    Condition: ShouldCreateInstance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref 'AWS::NoValue']
+      SubnetId: !If [ShouldCreateNetwork, !Ref Subnet, !Ref SubnetId]
+      SecurityGroupIds: !If [ShouldCreateNetwork, [!Ref InstanceSG], !Ref SecurityGroupIds]
+      PrivateIpAddress: !If [HasPrivateIp, !Ref PrivateIpAddress, !Ref 'AWS::NoValue']
+      Monitoring: !If [MonitoringEnabled, true, false]
+      IamInstanceProfile: !If [HasIamProfile, !Ref IamInstanceProfile, !Ref 'AWS::NoValue']
+      UserData: !If [HasUserData, !If [IsBase64Encoded, !Base64 {Ref: UserData}, !Ref UserData], !Ref 'AWS::NoValue']
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref RootVolumeSize
+            VolumeType: !Ref RootVolumeType
+            Iops: !If [HasIops, !Ref RootVolumeIops, !Ref 'AWS::NoValue']
+            Encrypted: !Ref RootVolumeEncrypted
+            DeleteOnTermination: !Ref RootVolumeDeleteOnTermination
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${InstanceName}'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+Outputs:
+  InstanceId: {Condition: ShouldCreateInstance, Value: !Ref EC2Instance}
+  PublicIp: {Condition: ShouldCreateInstance, Value: !GetAtt EC2Instance.PublicIp}
+  PrivateIp: {Condition: ShouldCreateInstance, Value: !GetAtt EC2Instance.PrivateIp}
+  VpcId: {Value: !If [ShouldCreateNetwork, !Ref VPC, !Ref VpcId]}
+  SubnetId: {Value: !If [ShouldCreateNetwork, !Ref Subnet, !Ref SubnetId]}
+  SecurityGroupId: {Value: !If [ShouldCreateNetwork, !GetAtt InstanceSG.GroupId, !Select [0, !Ref SecurityGroupIds]]}

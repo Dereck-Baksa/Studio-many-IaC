@@ -1,0 +1,254 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Rede desacoplada e generica - VPC, subnets (publicas/privadas/db), IGW, rotas, NAT opcional e Security Groups baseline. Reutilizavel em qualquer contexto (sem imports/exports e sem macros customizadas).'
+Parameters:
+  ProjectName: {Type: String, Default: StudioMany, Description: 'Prefixo dos nomes e tags (troque pelo nome do seu projeto).'}
+  Environment: {Type: String, Default: dev, AllowedValues: [dev, staging, prod], Description: 'Ambiente de implantacao.'}
+  VpcCidr: {Type: String, Default: 10.0.0.0/22, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'Bloco CIDR valido (ex: 10.0.0.0/16).', Description: 'CIDR da VPC.'}
+  EnableDnsSupport: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Resolucao DNS da VPC.'}
+  EnableDnsHostnames: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Hostnames DNS para instancias com IP publico.'}
+  InstanceTenancy: {Type: String, Default: default, AllowedValues: [default, dedicated], Description: 'Tenancy das instancias.'}
+  Az1: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1a, Description: 'AZ das subnets 1.'}
+  Az2: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1b, Description: 'AZ das subnets 2.'}
+  PublicSubnetCidr1: {Type: String, Default: 10.0.1.0/27, Description: 'CIDR da subnet publica 1.'}
+  PublicSubnetCidr2: {Type: String, Default: 10.0.1.32/27, Description: 'CIDR da subnet publica 2.'}
+  PrivateSubnetCidr1: {Type: String, Default: 10.0.2.0/27, Description: 'CIDR da subnet privada 1.'}
+  PrivateSubnetCidr2: {Type: String, Default: 10.0.2.32/27, Description: 'CIDR da subnet privada 2.'}
+  DbSubnetCidr1: {Type: String, Default: 10.0.3.0/27, Description: 'CIDR da subnet de banco 1.'}
+  DbSubnetCidr2: {Type: String, Default: 10.0.3.32/27, Description: 'CIDR da subnet de banco 2.'}
+  CreatePublicSubnets: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria as subnets publicas (com rota p/ IGW).'}
+  CreatePrivateSubnets: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria as subnets privadas.'}
+  CreateDbSubnets: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria as subnets de banco.'}
+  CreateSecurityGroups: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria os SGs baseline (app/rds/efs).'}
+  CreateDBSubnetGroup: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria o DB Subnet Group com as subnets de banco.'}
+  EnableNAT: {Type: String, Default: "false", AllowedValues: ["true", "false"], Description: 'Cria NAT Gateway (com EIP) p/ saida das subnets privadas.'}
+  MyIP: {Type: String, Default: 0.0.0.0/0, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido (ex: 203.0.113.1/32).', Description: 'CIDR liberado para SSH no SG de aplicacao.'}
+Conditions:
+  IsPublic: !Equals [!Ref CreatePublicSubnets, "true"]
+  IsPrivate: !Equals [!Ref CreatePrivateSubnets, "true"]
+  IsDb: !Equals [!Ref CreateDbSubnets, "true"]
+  IsSgs: !Equals [!Ref CreateSecurityGroups, "true"]
+  IsDbSubnetGroup: !And [!Equals [!Ref CreateDBSubnetGroup, "true"], !Equals [!Ref CreateDbSubnets, "true"]]
+  IsNatEnabled: !And [!Equals [!Ref EnableNAT, "true"], !Condition IsPublic, !Condition IsPrivate]
+Resources:
+  MainVpc:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: !Ref EnableDnsSupport
+      EnableDnsHostnames: !Ref EnableDnsHostnames
+      InstanceTenancy: !Ref InstanceTenancy
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-vpc'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-igw'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  AttachGateway: {Type: 'AWS::EC2::VPCGatewayAttachment', Properties: {VpcId: !Ref MainVpc, InternetGatewayId: !Ref InternetGateway}}
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: IsPublic
+    Properties:
+      VpcId: !Ref MainVpc
+      CidrBlock: !Ref PublicSubnetCidr1
+      AvailabilityZone: !Ref Az1
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-public-1'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: IsPublic
+    Properties:
+      VpcId: !Ref MainVpc
+      CidrBlock: !Ref PublicSubnetCidr2
+      AvailabilityZone: !Ref Az2
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-public-2'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: IsPrivate
+    Properties:
+      VpcId: !Ref MainVpc
+      CidrBlock: !Ref PrivateSubnetCidr1
+      AvailabilityZone: !Ref Az1
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-private-1'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: IsPrivate
+    Properties:
+      VpcId: !Ref MainVpc
+      CidrBlock: !Ref PrivateSubnetCidr2
+      AvailabilityZone: !Ref Az2
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-private-2'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  DbSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: IsDb
+    Properties:
+      VpcId: !Ref MainVpc
+      CidrBlock: !Ref DbSubnetCidr1
+      AvailabilityZone: !Ref Az1
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-db-1'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  DbSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: IsDb
+    Properties:
+      VpcId: !Ref MainVpc
+      CidrBlock: !Ref DbSubnetCidr2
+      AvailabilityZone: !Ref Az2
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-db-2'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: IsPublic
+    Properties:
+      VpcId: !Ref MainVpc
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-public-rt'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PublicRoute: {Type: 'AWS::EC2::Route', Condition: IsPublic, DependsOn: AttachGateway, Properties: {RouteTableId: !Ref PublicRouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway}}
+  PublicSubnet1Association: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: IsPublic, Properties: {SubnetId: !Ref PublicSubnet1, RouteTableId: !Ref PublicRouteTable}}
+  PublicSubnet2Association: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: IsPublic, Properties: {SubnetId: !Ref PublicSubnet2, RouteTableId: !Ref PublicRouteTable}}
+  NatEip1: {Type: 'AWS::EC2::EIP', Condition: IsNatEnabled, Properties: {Domain: vpc}}
+  NatEip2: {Type: 'AWS::EC2::EIP', Condition: IsNatEnabled, Properties: {Domain: vpc}}
+  NatGateway1:
+    Type: 'AWS::EC2::NatGateway'
+    Condition: IsNatEnabled
+    DependsOn: AttachGateway
+    Properties:
+      AllocationId: !GetAtt NatEip1.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-nat-1'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  NatGateway2:
+    Type: 'AWS::EC2::NatGateway'
+    Condition: IsNatEnabled
+    DependsOn: AttachGateway
+    Properties:
+      AllocationId: !GetAtt NatEip2.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-nat-2'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PrivateRouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: IsPrivate
+    Properties:
+      VpcId: !Ref MainVpc
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-private-rt-1'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PrivateRouteTable2:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: IsPrivate
+    Properties:
+      VpcId: !Ref MainVpc
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-private-rt-2'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PrivateRoute1: {Type: 'AWS::EC2::Route', Condition: IsNatEnabled, Properties: {RouteTableId: !Ref PrivateRouteTable1, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref NatGateway1}}
+  PrivateRoute2: {Type: 'AWS::EC2::Route', Condition: IsNatEnabled, Properties: {RouteTableId: !Ref PrivateRouteTable2, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref NatGateway2}}
+  PrivateSubnet1Association: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: IsPrivate, Properties: {SubnetId: !Ref PrivateSubnet1, RouteTableId: !Ref PrivateRouteTable1}}
+  PrivateSubnet2Association: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: IsPrivate, Properties: {SubnetId: !Ref PrivateSubnet2, RouteTableId: !Ref PrivateRouteTable2}}
+  AppSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: IsSgs
+    Properties:
+      GroupDescription: 'SG baseline de aplicacao (SSH/HTTP)'
+      VpcId: !Ref MainVpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref MyIP}
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 8080, ToPort: 8080, CidrIp: 0.0.0.0/0}
+      SecurityGroupEgress:
+        - {IpProtocol: '-1', CidrIp: 0.0.0.0/0}
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-app-sg'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  RdsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: IsSgs
+    Properties:
+      GroupDescription: 'SG para RDS (MySQL/PostgreSQL interno)'
+      VpcId: !Ref MainVpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 3306, ToPort: 3306, SourceSecurityGroupId: !Ref AppSecurityGroup}
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref AppSecurityGroup}
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-rds-sg'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  EfsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: IsSgs
+    Properties:
+      GroupDescription: 'SG para EFS (NFS interno)'
+      VpcId: !Ref MainVpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 2049, ToPort: 2049, SourceSecurityGroupId: !Ref AppSecurityGroup}
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-efs-sg'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  MainDBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Condition: IsDbSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub 'Subnet group ${ProjectName}-${Environment}'
+      SubnetIds: [!Ref DbSubnet1, !Ref DbSubnet2]
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-dbsubnetgroup'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+Outputs:
+  VpcId: {Value: !Ref MainVpc}
+  PublicSubnetIds: {Condition: IsPublic, Value: !Join [',', [!Ref PublicSubnet1, !Ref PublicSubnet2]]}
+  PrivateSubnetIds: {Condition: IsPrivate, Value: !Join [',', [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]}
+  DbSubnetIds: {Condition: IsDb, Value: !Join [',', [!Ref DbSubnet1, !Ref DbSubnet2]]}
+  AppSecurityGroupId: {Condition: IsSgs, Value: !Ref AppSecurityGroup}
+  RdsSecurityGroupId: {Condition: IsSgs, Value: !Ref RdsSecurityGroup}
+  EfsSecurityGroupId: {Condition: IsSgs, Value: !Ref EfsSecurityGroup}
+  DBSubnetGroupName: {Condition: IsDbSubnetGroup, Value: !Ref MainDBSubnetGroup}
