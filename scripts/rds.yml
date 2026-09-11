@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS desacoplado e generico - instancia de banco com rede propria opcional. CreateNetwork=true cria VPC/subnets privadas/IGW/rota/SG e DB Subnet Group; false usa DBSubnetGroupName/VPCSecurityGroups.'
+Parameters:
+  ProjectName: {Type: String, Default: StudioMany, Description: 'Prefixo dos nomes e tags.'}
+  Environment: {Type: String, Default: dev, AllowedValues: [dev, staging, prod], Description: 'Ambiente de implantacao.'}
+  DBInstanceName: {Type: String, Default: db, Description: 'Sufixo do nome da instancia de banco.'}
+  EnableDBInstance: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria o RDS (false = apenas rede/SG/DB Subnet Group).'}
+  CreateNetwork: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'true: cria VPC/subnets/SG/DBSubnetGroup internos. false: usa DBSubnetGroupName/VPCSecurityGroups.'}
+  Engine: {Type: String, Default: mysql, AllowedValues: [mysql, postgres, mariadb, aurora-mysql, oracle-ee, sqlserver-se], Description: 'Engine do banco.'}
+  EngineVersion: {Type: String, Default: 8.0.35, Description: 'Versao da engine (ex: mysql 8.0.35 / postgres 15.4).'}
+  DBInstanceClass: {Type: String, Default: db.t3.micro, AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium, db.t3.large, db.m5.large, db.m5.xlarge, db.r5.large, db.r5.xlarge], Description: 'Classe da instancia.'}
+  MasterUsername: {Type: String, Default: admin, Description: 'Usuario master.'}
+  MasterUserPassword: {Type: String, NoEcho: true, Description: 'Senha do usuario master (min 8 chars).'}
+  DBName: {Type: String, Default: '', Description: '(Opcional) Nome do banco inicial.'}
+  AllocatedStorage: {Type: Number, Default: 20, MinValue: 5, MaxValue: 65536, Description: 'Storage alocado (GiB).'}
+  MaxAllocatedStorage: {Type: Number, Default: 100, MinValue: 0, MaxValue: 1000, Description: '0 = sem autoscaling de storage.'}
+  StorageType: {Type: String, Default: gp3, AllowedValues: [standard, gp2, gp3, io1], Description: 'Tipo de storage.'}
+  StorageEncrypted: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Criptografa o storage.'}
+  KmsKeyId: {Type: String, Default: '', Description: '(Opcional) KMS key id (se StorageEncrypted=true).'}
+  MultiAZ: {Type: String, Default: "false", AllowedValues: ["true", "false"], Description: 'Multi-AZ (alta disponibilidade).'}
+  BackupRetentionPeriod: {Type: Number, Default: 7, MinValue: 0, MaxValue: 35, Description: 'Dias de retencao de backup.'}
+  PreferredBackupWindow: {Type: String, Default: '03:00-04:00', Description: 'Janela de backup (UTC).'}
+  PreferredMaintenanceWindow: {Type: String, Default: 'sun:04:00-sun:05:00', Description: 'Janela de manutencao (UTC).'}
+  DeletionProtection: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Protecao contra exclusao.'}
+  PubliclyAccessible: {Type: String, Default: "false", AllowedValues: ["true", "false"], Description: 'Acesso publico ao banco.'}
+  EnablePerformanceInsights: {Type: String, Default: "false", AllowedValues: ["true", "false"], Description: 'Performance Insights.'}
+  ApplyImmediately: {Type: String, Default: "false", AllowedValues: ["true", "false"], Description: 'Aplica mudancas imediatamente.'}
+  VpcCidr: {Type: String, Default: 10.0.0.0/22, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da VPC (quando CreateNetwork=true).'}
+  SubnetCidr1: {Type: String, Default: 10.0.3.0/27, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da subnet 1 (quando CreateNetwork=true).'}
+  SubnetCidr2: {Type: String, Default: 10.0.3.32/27, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da subnet 2 (quando CreateNetwork=true).'}
+  Az1: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1a, Description: 'AZ da subnet 1 (quando CreateNetwork=true).'}
+  Az2: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1b, Description: 'AZ da subnet 2 (quando CreateNetwork=true).'}
+  DBSubnetGroupName: {Type: String, Default: '', Description: '(Obrigatorio se CreateNetwork=false) DB Subnet Group existente.'}
+  VPCSecurityGroups: {Type: CommaDelimitedList, Default: '', Description: '(Obrigatorio se CreateNetwork=false) SGs do RDS (porta 3306/5432).'}
+Conditions:
+  ShouldCreateNetwork: !Equals [!Ref CreateNetwork, "true"]
+  ShouldCreateDBInstance: !Equals [!Ref EnableDBInstance, "true"]
+  HasDBName: !Not [!Equals [!Ref DBName, '']]
+  HasMaxStorage: !Not [!Equals [!Ref MaxAllocatedStorage, 0]]
+  HasKmsKey: !Not [!Equals [!Ref KmsKeyId, '']]
+  IsPerformanceInsights: !Equals [!Ref EnablePerformanceInsights, "true"]
+  IsMultiAZ: !Equals [!Ref MultiAZ, "true"]
+  IsDeletionProtection: !Equals [!Ref DeletionProtection, "true"]
+  IsPubliclyAccessible: !Equals [!Ref PubliclyAccessible, "true"]
+  IsApplyImmediately: !Equals [!Ref ApplyImmediately, "true"]
+  IsStorageEncrypted: !Equals [!Ref StorageEncrypted, "true"]
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Condition: ShouldCreateNetwork
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${DBInstanceName}-vpc'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  DBSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr1
+      AvailabilityZone: !Ref Az1
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${DBInstanceName}-subnet-1'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  DBSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr2
+      AvailabilityZone: !Ref Az2
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${DBInstanceName}-subnet-2'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  DBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: ShouldCreateNetwork
+    Properties:
+      GroupDescription: 'Security group do RDS'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 3306, ToPort: 3306, CidrIp: !Ref VpcCidr}
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, CidrIp: !Ref VpcCidr}
+      SecurityGroupEgress:
+        - {IpProtocol: '-1', CidrIp: 0.0.0.0/0}
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${DBInstanceName}-sg'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  DBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Condition: ShouldCreateNetwork
+    Properties:
+      DBSubnetGroupDescription: !Sub 'Subnet group do ${ProjectName}-${Environment}-${DBInstanceName}'
+      SubnetIds: [!Ref DBSubnet1, !Ref DBSubnet2]
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${DBInstanceName}-dbsubnetgroup'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  DBInstance:
+    Type: 'AWS::RDS::DBInstance'
+    Condition: ShouldCreateDBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-${DBInstanceName}'
+      Engine: !Ref Engine
+      EngineVersion: !Ref EngineVersion
+      DBInstanceClass: !Ref DBInstanceClass
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      DBName: !If [HasDBName, !Ref DBName, !Ref 'AWS::NoValue']
+      AllocatedStorage: !Ref AllocatedStorage
+      MaxAllocatedStorage: !If [HasMaxStorage, !Ref MaxAllocatedStorage, !Ref 'AWS::NoValue']
+      StorageType: !Ref StorageType
+      StorageEncrypted: !If [IsStorageEncrypted, true, false]
+      KmsKeyId: !If [HasKmsKey, !Ref KmsKeyId, !Ref 'AWS::NoValue']
+      MultiAZ: !If [IsMultiAZ, true, false]
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      PreferredBackupWindow: !Ref PreferredBackupWindow
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      DeletionProtection: !If [IsDeletionProtection, true, false]
+      PubliclyAccessible: !If [IsPubliclyAccessible, true, false]
+      EnablePerformanceInsights: !If [IsPerformanceInsights, true, false]
+      ApplyImmediately: !If [IsApplyImmediately, true, false]
+      DBSubnetGroupName: !If [ShouldCreateNetwork, !Ref DBSubnetGroup, !Ref DBSubnetGroupName]
+      VPCSecurityGroups: !If [ShouldCreateNetwork, [!Ref DBSecurityGroup], !Ref VPCSecurityGroups]
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${DBInstanceName}'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+Outputs:
+  DBInstanceEndpoint: {Condition: ShouldCreateDBInstance, Value: !GetAtt DBInstance.Endpoint.Address}
+  DBInstancePort: {Condition: ShouldCreateDBInstance, Value: !GetAtt DBInstance.Endpoint.Port}
+  DBInstanceArn: {Condition: ShouldCreateDBInstance, Value: !GetAtt DBInstance.DBInstanceArn}
+  VpcId: {Value: !If [ShouldCreateNetwork, !Ref VPC, !Ref 'AWS::NoValue']}
