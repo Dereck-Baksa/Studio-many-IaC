@@ -1,0 +1,20 @@
+services:
+  localstack:
+    image: localstack/localstack:3.8.1
+    container_name: studio-many-localstack
+    environment:
+      SERVICES: cloudformation,ec2,efs,elbv2,rds,cloudwatch
+      DEBUG: "0"
+      PERSISTENCE: "1"
+      DEFAULT_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    volumes:
+      - ./init/ready.d:/etc/localstack/init/ready.d:ro
+      - ../scripts:/opt/scripts:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - localstack-data:/var/lib/localstack
+volumes:
+  localstack-data:

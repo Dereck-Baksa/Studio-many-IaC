@@ -1,0 +1,18 @@
+docker compose up -d
+docker compose logs -f localstack   # acompanhe o deploy (RDS pode demorar puxando a imagem do MySQL)
+
+listar stacks
+docker compose exec localstack awslocal cloudformation list-stacks
+
+outputs de um stack (ex: VPC, subnets, SGs)
+docker compose exec localstack awslocal cloudformation describe-stacks --stack-name studio-many-network --query "Stacks[0].Outputs"
+
+recursos de um stack
+docker compose exec localstack awslocal cloudformation list-stack-resources --stack-name studio-many-network
+
+# VPCs, instancias, RDS, EFS, ALB
+docker compose exec localstack awslocal ec2 describe-vpcs
+docker compose exec localstack awslocal ec2 describe-instances
+docker compose exec localstack awslocal rds describe-db-instances
+docker compose exec localstack awslocal efs describe-file-systems
+docker compose exec localstack awslocal elbv2 describe-load-balancers
