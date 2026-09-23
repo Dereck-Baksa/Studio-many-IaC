@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EFS desacoplado e generico - File System NFS com rede propria opcional. CreateNetwork=true cria VPC/subnets/IGW/rota/SG e Mount Targets internos; false usa MountSubnetId1/2 e MountSecurityGroupIds.'
+Parameters:
+  ProjectName: {Type: String, Default: StudioMany, Description: 'Prefixo dos nomes e tags.'}
+  Environment: {Type: String, Default: dev, AllowedValues: [dev, staging, prod], Description: 'Ambiente de implantacao.'}
+  EfsName: {Type: String, Default: shared, Description: 'Sufixo do nome do file system.'}
+  EnableFileSystem: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria o EFS (false = apenas rede/SG).'}
+  CreateNetwork: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'true: cria VPC/subnets/IGW/rota/SG e 2 Mount Targets. false: usa MountSubnetId1/2/MountSecurityGroupIds.'}
+  PerformanceMode: {Type: String, Default: generalPurpose, AllowedValues: [generalPurpose, maxIO], Description: 'Modo de performance.'}
+  ThroughputMode: {Type: String, Default: bursting, AllowedValues: [bursting, provisioned, elastic], Description: 'Modo de throughput.'}
+  ProvisionedThroughputInMibps: {Type: Number, Default: 1, MinValue: 1, MaxValue: 10000, Description: 'Throughput provisionado MiB/s (usado se ThroughputMode=provisioned).'}
+  Encrypted: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Criptografa o file system.'}
+  KmsKeyId: {Type: String, Default: '', Description: '(Opcional) ARN/ID do KMS (se Encrypted=true).'}
+  TransitionToIA: {Type: String, Default: DISABLED, AllowedValues: [DISABLED, AFTER_7_DAYS, AFTER_14_DAYS, AFTER_30_DAYS, AFTER_60_DAYS, AFTER_90_DAYS], Description: 'Lifecycle p/ Infrequent Access (DISABLED = sem policy).'}
+  VpcCidr: {Type: String, Default: 10.0.0.0/22, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da VPC (quando CreateNetwork=true).'}
+  SubnetCidr1: {Type: String, Default: 10.0.1.0/27, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da subnet 1 (quando CreateNetwork=true).'}
+  SubnetCidr2: {Type: String, Default: 10.0.1.32/27, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da subnet 2 (quando CreateNetwork=true).'}
+  Az1: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1a, Description: 'AZ da subnet 1 (quando CreateNetwork=true).'}
+  Az2: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1b, Description: 'AZ da subnet 2 (quando CreateNetwork=true).'}
+  MountSubnetId1: {Type: 'AWS::EC2::Subnet::Id', Default: '', Description: '(Obrigatorio se CreateNetwork=false) Subnet do 1o Mount Target.'}
+  MountSubnetId2: {Type: 'AWS::EC2::Subnet::Id', Default: '', Description: '(Opcional) Subnet do 2o Mount Target.'}
+  MountSecurityGroupIds: {Type: 'List<AWS::EC2::SecurityGroup::Id>', Default: '', Description: '(Obrigatorio se CreateNetwork=false) SGs dos Mount Targets.'}
+Conditions:
+  ShouldCreateNetwork: !Equals [!Ref CreateNetwork, "true"]
+  ShouldCreateFileSystem: !Equals [!Ref EnableFileSystem, "true"]
+  IsProvisioned: !Equals [!Ref ThroughputMode, provisioned]
+  IsEncrypted: !Equals [!Ref Encrypted, "true"]
+  HasKmsKey: !Not [!Equals [!Ref KmsKeyId, '']]
+  HasLifecycle: !Not [!Equals [!Ref TransitionToIA, DISABLED]]
+  HasMountSubnet1: !Not [!Equals [!Ref MountSubnetId1, '']]
+  HasMountSubnet2: !Not [!Equals [!Ref MountSubnetId2, '']]
+  ShouldCreateMountTarget2: !And [!Condition ShouldCreateFileSystem, !Or [!Condition ShouldCreateNetwork, !Condition HasMountSubnet2]]
+  ShouldCreateMountTarget1: !And [!Condition ShouldCreateFileSystem, !Or [!Condition ShouldCreateNetwork, !Condition HasMountSubnet1]]
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Condition: ShouldCreateNetwork
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${EfsName}-vpc'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Condition: ShouldCreateNetwork
+    Properties:
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${EfsName}-igw'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  AttachGateway: {Type: 'AWS::EC2::VPCGatewayAttachment', Condition: ShouldCreateNetwork, Properties: {VpcId: !Ref VPC, InternetGatewayId: !Ref InternetGateway}}
+  Subnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr1
+      AvailabilityZone: !Ref Az1
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${EfsName}-subnet-1'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  Subnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr2
+      AvailabilityZone: !Ref Az2
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${EfsName}-subnet-2'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${EfsName}-rt'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PublicRoute: {Type: 'AWS::EC2::Route', Condition: ShouldCreateNetwork, DependsOn: AttachGateway, Properties: {RouteTableId: !Ref RouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway}}
+  Subnet1Association: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: ShouldCreateNetwork, Properties: {SubnetId: !Ref Subnet1, RouteTableId: !Ref RouteTable}}
+  Subnet2Association: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: ShouldCreateNetwork, Properties: {SubnetId: !Ref Subnet2, RouteTableId: !Ref RouteTable}}
+  MountSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: ShouldCreateNetwork
+    Properties:
+      GroupDescription: 'Security group dos Mount Targets (NFS)'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 2049, ToPort: 2049, CidrIp: !Ref VpcCidr}
+      SecurityGroupEgress:
+        - {IpProtocol: '-1', CidrIp: 0.0.0.0/0}
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${EfsName}-sg'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  FileSystem:
+    Type: 'AWS::EFS::FileSystem'
+    Condition: ShouldCreateFileSystem
+    Properties:
+      PerformanceMode: !Ref PerformanceMode
+      ThroughputMode: !Ref ThroughputMode
+      ProvisionedThroughputInMibps: !If [IsProvisioned, !Ref ProvisionedThroughputInMibps, !Ref 'AWS::NoValue']
+      Encrypted: !If [IsEncrypted, true, false]
+      KmsKeyId: !If [HasKmsKey, !Ref KmsKeyId, !Ref 'AWS::NoValue']
+      LifecyclePolicies: !If [HasLifecycle, [{TransitionToIA: !Ref TransitionToIA}], !Ref 'AWS::NoValue']
+      FileSystemTags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${EfsName}'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  MountTarget1:
+    Type: 'AWS::EFS::MountTarget'
+    Condition: ShouldCreateMountTarget1
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !If [ShouldCreateNetwork, !Ref Subnet1, !Ref MountSubnetId1]
+      SecurityGroups: !If [ShouldCreateNetwork, [!Ref MountSecurityGroup], !Ref MountSecurityGroupIds]
+  MountTarget2:
+    Type: 'AWS::EFS::MountTarget'
+    Condition: ShouldCreateMountTarget2
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !If [ShouldCreateNetwork, !Ref Subnet2, !Ref MountSubnetId2]
+      SecurityGroups: !If [ShouldCreateNetwork, [!Ref MountSecurityGroup], !Ref MountSecurityGroupIds]
+Outputs:
+  FileSystemId: {Condition: ShouldCreateFileSystem, Value: !Ref FileSystem}
+  FileSystemArn: {Condition: ShouldCreateFileSystem, Value: !GetAtt FileSystem.Arn}
+  VpcId: {Value: !If [ShouldCreateNetwork, !Ref VPC, !Ref 'AWS::NoValue']}

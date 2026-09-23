@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudWatch Alarm desacoplado e generico - alarme sobre qualquer metrica CloudWatch com ate 3 dimensoes e acoes opcionais (SNS). Reutilizavel em qualquer contexto.'
+Parameters:
+  ProjectName: {Type: String, Default: StudioMany, Description: 'Prefixo do nome do alarme.'}
+  Environment: {Type: String, Default: dev, AllowedValues: [dev, staging, prod], Description: 'Ambiente de implantacao.'}
+  AlarmName: {Type: String, Default: alarm, Description: 'Sufixo do nome do alarme.'}
+  EnableAlarm: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria o alarme.'}
+  Namespace: {Type: String, Default: 'AWS/EC2', Description: 'Namespace da metrica (ex: AWS/EC2, AWS/RDS, AWS/ApplicationELB).'}
+  MetricName: {Type: String, Default: CPUUtilization, Description: 'Nome da metrica.'}
+  Statistic: {Type: String, Default: Average, AllowedValues: [SampleCount, Average, Sum, Minimum, Maximum], Description: 'Estatistica da metrica.'}
+  Period: {Type: Number, Default: 300, MinValue: 1, MaxValue: 86400, Description: 'Periodo da metrica (seg).'}
+  EvaluationPeriods: {Type: Number, Default: 2, MinValue: 1, MaxValue: 100, Description: 'Numero de periodos p/ disparar.'}
+  Threshold: {Type: Number, Default: 80, Description: 'Valor de comparacao.'}
+  ComparisonOperator: {Type: String, Default: GreaterThanOrEqualToThreshold, AllowedValues: [GreaterThanOrEqualToThreshold, GreaterThanThreshold, LessThanThreshold, LessThanOrEqualToThreshold], Description: 'Operador de comparacao.'}
+  TreatMissingData: {Type: String, Default: missing, AllowedValues: [breaching, notBreaching, ignore, missing], Description: 'Tratamento de dados ausentes.'}
+  DimensionName1: {Type: String, Default: '', Description: '(Opcional) Nome da 1a dimensao.'}
+  DimensionValue1: {Type: String, Default: '', Description: '(Opcional) Valor da 1a dimensao.'}
+  DimensionName2: {Type: String, Default: '', Description: '(Opcional) Nome da 2a dimensao.'}
+  DimensionValue2: {Type: String, Default: '', Description: '(Opcional) Valor da 2a dimensao.'}
+  DimensionName3: {Type: String, Default: '', Description: '(Opcional) Nome da 3a dimensao.'}
+  DimensionValue3: {Type: String, Default: '', Description: '(Opcional) Valor da 3a dimensao.'}
+  AlarmActions: {Type: CommaDelimitedList, Default: '', Description: '(Opcional) ARNs dos SNS p/ acao em ALARM.'}
+  OKActions: {Type: CommaDelimitedList, Default: '', Description: '(Opcional) ARNs dos SNS p/ acao em OK.'}
+  InsufficientDataActions: {Type: CommaDelimitedList, Default: '', Description: '(Opcional) ARNs dos SNS p/ acao em INSUFFICIENT_DATA.'}
+Conditions:
+  ShouldCreateAlarm: !Equals [!Ref EnableAlarm, "true"]
+  HasDim1: !Not [!Equals [!Join [',', [!Ref DimensionName1, !Ref DimensionValue1]], ',']]
+  HasDim2: !Not [!Equals [!Join [',', [!Ref DimensionName2, !Ref DimensionValue2]], ',']]
+  HasDim3: !Not [!Equals [!Join [',', [!Ref DimensionName3, !Ref DimensionValue3]], ',']]
+  HasAlarmActions: !Not [!Equals [!Join [',', !Ref AlarmActions], '']]
+  HasOKActions: !Not [!Equals [!Join [',', !Ref OKActions], '']]
+  HasInsufficientDataActions: !Not [!Equals [!Join [',', !Ref InsufficientDataActions], '']]
+Resources:
+  Alarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Condition: ShouldCreateAlarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-${AlarmName}'
+      AlarmDescription: !Sub 'Alarme ${MetricName} para o ${ProjectName}-${Environment}'
+      Namespace: !Ref Namespace
+      MetricName: !Ref MetricName
+      Statistic: !Ref Statistic
+      Period: !Ref Period
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref Threshold
+      ComparisonOperator: !Ref ComparisonOperator
+      TreatMissingData: !Ref TreatMissingData
+      Dimensions: [!If [HasDim1, {Name: !Ref DimensionName1, Value: !Ref DimensionValue1}, !Ref 'AWS::NoValue'], !If [HasDim2, {Name: !Ref DimensionName2, Value: !Ref DimensionValue2}, !Ref 'AWS::NoValue'], !If [HasDim3, {Name: !Ref DimensionName3, Value: !Ref DimensionValue3}, !Ref 'AWS::NoValue']]
+      AlarmActions: !If [HasAlarmActions, !Ref AlarmActions, !Ref 'AWS::NoValue']
+      OKActions: !If [HasOKActions, !Ref OKActions, !Ref 'AWS::NoValue']
+      InsufficientDataActions: !If [HasInsufficientDataActions, !Ref InsufficientDataActions, !Ref 'AWS::NoValue']
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${AlarmName}'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+Outputs:
+  AlarmArn: {Condition: ShouldCreateAlarm, Value: !GetAtt Alarm.Arn}
+  AlarmLogicalId: {Condition: ShouldCreateAlarm, Value: !Ref Alarm}

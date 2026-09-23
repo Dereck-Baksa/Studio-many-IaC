@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ALB desacoplado e generico - Load Balancer, Target Group e Listener com rede propria opcional. CreateNetwork=true cria VPC/subnets/IGW/rota/SG internos; false usa VpcId/SubnetIds/SecurityGroupIds.'
+Parameters:
+  ProjectName: {Type: String, Default: StudioMany, Description: 'Prefixo dos nomes e tags.'}
+  Environment: {Type: String, Default: dev, AllowedValues: [dev, staging, prod], Description: 'Ambiente de implantacao.'}
+  AlbName: {Type: String, Default: alb, Description: 'Sufixo do nome do ALB.'}
+  EnableLoadBalancer: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'Cria o ALB/TG/Listener (false = apenas rede/SG).'}
+  CreateNetwork: {Type: String, Default: "true", AllowedValues: ["true", "false"], Description: 'true: cria VPC/subnets/IGW/rota/SG internos. false: usa VpcId/SubnetIds/SecurityGroupIds.'}
+  Scheme: {Type: String, Default: internet-facing, AllowedValues: [internet-facing, internal], Description: 'Esquema do Load Balancer.'}
+  IpAddressType: {Type: String, Default: ipv4, AllowedValues: [ipv4, dualstack], Description: 'Tipo de endereco IP.'}
+  Port: {Type: Number, Default: 80, MinValue: 1, MaxValue: 65535, Description: 'Porta da aplicacao (target).'}
+  Protocol: {Type: String, Default: HTTP, AllowedValues: [HTTP, HTTPS, TCP, TLS], Description: 'Protocolo da aplicacao (target).'}
+  ListenerPort: {Type: Number, Default: 80, MinValue: 1, MaxValue: 65535, Description: 'Porta do listener.'}
+  ListenerProtocol: {Type: String, Default: HTTP, AllowedValues: [HTTP, HTTPS, TCP, TLS], Description: 'Protocolo do listener.'}
+  CertificateArn: {Type: String, Default: '', Description: '(Obrigatorio se ListenerProtocol=HTTPS/TLS) ARN do ACM.'}
+  TargetType: {Type: String, Default: instance, AllowedValues: [instance, ip, lambda], Description: 'Tipo do alvo (instance/ip/lambda).'}
+  TargetInstanceId1: {Type: String, Default: '', Description: '(Opcional) ID do primeiro alvo.'}
+  TargetInstanceId2: {Type: String, Default: '', Description: '(Opcional) ID do segundo alvo.'}
+  HealthCheckPath: {Type: String, Default: /, Description: 'Path do health check.'}
+  HealthCheckIntervalSeconds: {Type: Number, Default: 30, MinValue: 5, MaxValue: 300, Description: 'Intervalo do health check.'}
+  HealthCheckTimeoutSeconds: {Type: Number, Default: 5, MinValue: 2, MaxValue: 120, Description: 'Timeout do health check.'}
+  HealthyThresholdCount: {Type: Number, Default: 3, MinValue: 2, MaxValue: 10, Description: 'Threshold saudavel.'}
+  UnhealthyThresholdCount: {Type: Number, Default: 2, MinValue: 2, MaxValue: 10, Description: 'Threshold nao saudavel.'}
+  IdleTimeout: {Type: Number, Default: 60, MinValue: 1, MaxValue: 4000, Description: 'Idle timeout do ALB (seg).'}
+  EnableDeletionProtection: {Type: String, Default: "false", AllowedValues: ["true", "false"], Description: 'Protecao contra exclusao acidental.'}
+  AccessLogsS3Bucket: {Type: String, Default: '', Description: '(Opcional) Bucket S3 p/ access logs (deve ter policy de log).'}
+  AccessLogsPrefix: {Type: String, Default: '', Description: '(Opcional) Prefixo dos access logs.'}
+  VpcCidr: {Type: String, Default: 10.0.0.0/22, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da VPC (quando CreateNetwork=true).'}
+  SubnetCidr1: {Type: String, Default: 10.0.1.0/27, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da subnet 1 (quando CreateNetwork=true).'}
+  SubnetCidr2: {Type: String, Default: 10.0.1.32/27, AllowedPattern: '^((\d{1,3}\.){3}\d{1,3})/(\d{1,2})$', ConstraintDescription: 'CIDR valido.', Description: 'CIDR da subnet 2 (quando CreateNetwork=true).'}
+  Az1: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1a, Description: 'AZ da subnet 1 (quando CreateNetwork=true).'}
+  Az2: {Type: 'AWS::EC2::AvailabilityZone::Name', Default: us-east-1b, Description: 'AZ da subnet 2 (quando CreateNetwork=true).'}
+  VpcId: {Type: String, Default: '', Description: '(Obrigatorio se CreateNetwork=false) VPC existente.'}
+  SubnetIds: {Type: CommaDelimitedList, Default: '', Description: '(Obrigatorio se CreateNetwork=false) Subnets do ALB.'}
+  SecurityGroupIds: {Type: CommaDelimitedList, Default: '', Description: '(Obrigatorio se CreateNetwork=false) SGs do ALB.'}
+Conditions:
+  ShouldCreateNetwork: !Equals [!Ref CreateNetwork, "true"]
+  ShouldCreateLoadBalancer: !Equals [!Ref EnableLoadBalancer, "true"]
+  HasTarget1: !Not [!Equals [!Ref TargetInstanceId1, '']]
+  HasTarget2: !Not [!Equals [!Ref TargetInstanceId2, '']]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  HasAccessLogs: !Not [!Equals [!Ref AccessLogsS3Bucket, '']]
+  IsDeletionProtection: !Equals [!Ref EnableDeletionProtection, "true"]
+  IsHttpsProtocol: !Equals [!Ref Protocol, HTTPS]
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Condition: ShouldCreateNetwork
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${AlbName}-vpc'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Condition: ShouldCreateNetwork
+    Properties:
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${AlbName}-igw'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  AttachGateway: {Type: 'AWS::EC2::VPCGatewayAttachment', Condition: ShouldCreateNetwork, Properties: {VpcId: !Ref VPC, InternetGatewayId: !Ref InternetGateway}}
+  Subnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr1
+      AvailabilityZone: !Ref Az1
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${AlbName}-subnet-1'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  Subnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr2
+      AvailabilityZone: !Ref Az2
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${AlbName}-subnet-2'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: ShouldCreateNetwork
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${AlbName}-rt'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  PublicRoute: {Type: 'AWS::EC2::Route', Condition: ShouldCreateNetwork, DependsOn: AttachGateway, Properties: {RouteTableId: !Ref RouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway}}
+  Subnet1Association: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: ShouldCreateNetwork, Properties: {SubnetId: !Ref Subnet1, RouteTableId: !Ref RouteTable}}
+  Subnet2Association: {Type: 'AWS::EC2::SubnetRouteTableAssociation', Condition: ShouldCreateNetwork, Properties: {SubnetId: !Ref Subnet2, RouteTableId: !Ref RouteTable}}
+  LoadBalancerSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: ShouldCreateNetwork
+    Properties:
+      GroupDescription: 'Security group do Load Balancer'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: !Ref ListenerPort, ToPort: !Ref ListenerPort, CidrIp: 0.0.0.0/0}
+      SecurityGroupEgress:
+        - {IpProtocol: '-1', CidrIp: 0.0.0.0/0}
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${AlbName}-sg'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Condition: ShouldCreateLoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-${AlbName}'
+      Scheme: !Ref Scheme
+      Type: application
+      IpAddressType: !Ref IpAddressType
+      Subnets: !If [ShouldCreateNetwork, [!Ref Subnet1, !Ref Subnet2], !Ref SubnetIds]
+      SecurityGroups: !If [ShouldCreateNetwork, [!Ref LoadBalancerSG], !Ref SecurityGroupIds]
+      LoadBalancerAttributes:
+        - {Key: idle_timeout.timeout_seconds, Value: !Ref IdleTimeout}
+        - {Key: deletion_protection.enabled, Value: !If [IsDeletionProtection, "true", "false"]}
+        - {Key: access_logs.s3.enabled, Value: !If [HasAccessLogs, "true", "false"]}
+        - {Key: access_logs.s3.bucket, Value: !If [HasAccessLogs, !Ref AccessLogsS3Bucket, !Ref 'AWS::NoValue']}
+        - {Key: access_logs.s3.prefix, Value: !If [HasAccessLogs, !Ref AccessLogsPrefix, !Ref 'AWS::NoValue']}
+      Tags:
+        - {Key: Name, Value: !Sub '${ProjectName}-${Environment}-${AlbName}'}
+        - {Key: Environment, Value: !Ref Environment}
+        - {Key: ManagedBy, Value: CloudFormation}
+        - {Key: Project, Value: !Ref ProjectName}
+  TargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Condition: ShouldCreateLoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-${AlbName}-tg'
+      Port: !Ref Port
+      Protocol: !Ref Protocol
+      TargetType: !Ref TargetType
+      VpcId: !If [ShouldCreateNetwork, !Ref VPC, !Ref VpcId]
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: !Ref HealthCheckIntervalSeconds
+      HealthCheckTimeoutSeconds: !Ref HealthCheckTimeoutSeconds
+      HealthyThresholdCount: !Ref HealthyThresholdCount
+      UnhealthyThresholdCount: !Ref UnhealthyThresholdCount
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckProtocol: !If [IsHttpsProtocol, HTTPS, HTTP]
+      Targets: [!If [HasTarget1, {Id: !Ref TargetInstanceId1, Port: !Ref Port}, !Ref 'AWS::NoValue'], !If [HasTarget2, {Id: !Ref TargetInstanceId2, Port: !Ref Port}, !Ref 'AWS::NoValue']]
+  Listener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Condition: ShouldCreateLoadBalancer
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: !Ref ListenerPort
+      Protocol: !Ref ListenerProtocol
+      Certificates: !If [HasCertificate, [{CertificateArn: !Ref CertificateArn}], !Ref 'AWS::NoValue']
+      DefaultActions:
+        - {Type: forward, TargetGroupArn: !Ref TargetGroup}
+Outputs:
+  LoadBalancerArn: {Condition: ShouldCreateLoadBalancer, Value: !Ref LoadBalancer}
+  LoadBalancerDnsName: {Condition: ShouldCreateLoadBalancer, Value: !GetAtt LoadBalancer.DNSName}
+  TargetGroupArn: {Condition: ShouldCreateLoadBalancer, Value: !Ref TargetGroup}
+  VpcId: {Value: !If [ShouldCreateNetwork, !Ref VPC, !Ref VpcId]}
