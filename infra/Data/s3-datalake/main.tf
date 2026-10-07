@@ -5,7 +5,9 @@ resource "random_string" "sufixo" {
   upper   = false
 }
 
- 
+
+#bucket:
+
 resource "aws_s3_bucket" "s3_bronze" {
   bucket        = "${var.bronze_bucket_name}-${random_string.sufixo.result}"
   force_destroy = true
@@ -56,24 +58,7 @@ resource "aws_s3_object" "gold_prefix" {
   source = "/dev/null"
 }
 
-resource "aws_s3_bucket" "s3_scripts" {
-  bucket        = "s3-glue-scripts-${random_string.sufixo.result}"
-  force_destroy = true
-
-  tags = {
-    Name    = "s3-glue-scripts"
-    Project = var.project_name
-  }
-}
-
-
-resource "aws_s3_object" "glue_etl_script" {
-  bucket = aws_s3_bucket.s3_scripts.id
-  key    = var.glue_etl_script_key
-  source = var.glue_etl_script_path != "" ? var.glue_etl_script_path : "/dev/null"
-  etag   = var.glue_etl_script_path != "" ? filemd5(var.glue_etl_script_path) : null
-}
-
+#iam role
 
 resource "aws_iam_role" "glue_role" {
   name = "${var.project_name}-glue-role"
@@ -118,24 +103,24 @@ resource "aws_iam_role_policy" "glue_s3_access" {
           aws_s3_bucket.s3_silver.arn,
           "${aws_s3_bucket.s3_silver.arn}/*",
           aws_s3_bucket.s3_gold.arn,
-          "${aws_s3_bucket.s3_gold.arn}/*",
-          aws_s3_bucket.s3_scripts.arn,
-          "${aws_s3_bucket.s3_scripts.arn}/*"
+          "${aws_s3_bucket.s3_gold.arn}/*"
         ]
       }
     ]
   })
 }
 
-#
-resource "aws_glue_job" "glue_etl_job" {
+#Glue para as etls
+
+#  Glue Job (Bronze -> Silver) 
+resource "aws_glue_job" "glue_silver_job" {
   name         = "glue-etl-job"
   role_arn     = aws_iam_role.glue_role.arn
   glue_version = var.glue_job_glue_version
 
   command {
     name            = "glueetl"
-    script_location = "s3://${aws_s3_bucket.s3_scripts.bucket}/${var.glue_etl_script_key}"
+    script_location = "s3://REPLACE_ME/${var.glue_etl_script_key}" # TODO: definir novo local do script
     python_version  = "3"
   }
 
@@ -146,8 +131,6 @@ resource "aws_glue_job" "glue_etl_job" {
 
   number_of_workers = 2
   worker_type       = "G.1X"
-
-  depends_on = [aws_s3_object.glue_etl_script]
 }
 
 #  Glue Job (Silver -> Gold) 
@@ -158,7 +141,7 @@ resource "aws_glue_job" "glue_gold_job" {
 
   command {
     name            = "glueetl"
-    script_location = "s3://${aws_s3_bucket.s3_scripts.bucket}/${var.glue_etl_script_key}"
+    script_location = "s3://REPLACE_ME/${var.glue_etl_script_key}" # TODO: definir novo local do script
     python_version  = "3"
   }
 
@@ -169,8 +152,6 @@ resource "aws_glue_job" "glue_gold_job" {
 
   number_of_workers = 2
   worker_type       = "G.1X"
-
-  depends_on = [aws_s3_object.glue_etl_script]
 }
 
 #  Glue Data Catalog 
